@@ -1,0 +1,11 @@
+{
+  "name": "fhv-driver-alerts",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Unofficial alerts for NYC TLC FHV drivers: license expiry in 30 days, or removal from the active list.",
+  "engines": { "node": ">=20" },
+  "scripts": {
+    "test": "node --test test/*.test.js"
+  }
+}

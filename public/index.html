@@ -1,0 +1,223 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FHV Driver Alerts</title>
+<meta name="description" content="Get a Telegram alert 30 days before your NYC TLC FHV license expires, or if it drops off the active drivers list. Unofficial.">
+<style>
+  :root {
+    --bg: #f6f7f9; --card: #fff; --ink: #14181f; --muted: #5b6573; --line: #e2e6ec;
+    --brand: #0b5fff; --brand-ink: #fff; --ok: #0a7a43; --warn: #a85a00; --bad: #b3261e;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #0e1116; --card: #171b22; --ink: #eef1f5; --muted: #98a2b3; --line: #2a303a;
+            --brand: #5b8cff; --brand-ink: #0b0f1a; --ok: #4cc38a; --warn: #f0a24a; --bad: #ff7b72; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 16px/1.5 system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+         background: var(--bg); color: var(--ink); }
+  main { max-width: 520px; margin: 0 auto; padding: 24px 16px 48px; }
+  h1 { font-size: 1.5rem; margin: 8px 0 4px; }
+  .sub { color: var(--muted); margin: 0 0 20px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 18px; margin-bottom: 16px; }
+  label { display: block; font-weight: 600; margin: 12px 0 6px; }
+  input { width: 100%; font: inherit; padding: 12px; border-radius: 10px; border: 1px solid var(--line);
+          background: var(--bg); color: var(--ink); }
+  input:focus-visible, button:focus-visible, a.btn:focus-visible { outline: 3px solid var(--brand); outline-offset: 2px; }
+  button, a.btn { display: inline-block; font: inherit; font-weight: 600; text-align: center; text-decoration: none;
+         padding: 12px 16px; border-radius: 10px; border: 0; cursor: pointer;
+         background: var(--brand); color: var(--brand-ink); margin-top: 14px; width: 100%; }
+  button.quiet { background: transparent; color: var(--muted); border: 1px solid var(--line); }
+  button[disabled] { opacity: .6; cursor: default; }
+  .msg { margin-top: 12px; min-height: 1.5em; }
+  .msg.err { color: var(--bad); } .msg.ok { color: var(--ok); }
+  dl { margin: 0; display: grid; grid-template-columns: auto 1fr; gap: 6px 14px; }
+  dt { color: var(--muted); } dd { margin: 0; font-weight: 600; word-break: break-word; }
+  .pill { display: inline-block; padding: 2px 10px; border-radius: 99px; font-size: .85rem; font-weight: 600;
+          border: 1px solid currentColor; }
+  .pill.ok { color: var(--ok); } .pill.bad { color: var(--bad); } .pill.warn { color: var(--warn); }
+  .fine { color: var(--muted); font-size: .85rem; }
+  ul.tight { margin: 8px 0 0; padding-left: 20px; }
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<main>
+  <h1>FHV Driver Alerts</h1>
+  <p class="sub">A Telegram message 30 days before your TLC license expires, or if it drops off the active drivers list.</p>
+
+  <div id="loading" class="card">Loading…</div>
+
+  <!-- Step 1: sign in -->
+  <section id="signin" class="card" hidden>
+    <h2 style="margin-top:0">Sign in</h2>
+    <p class="fine" style="margin-top:0">We email you a one-time link. No password.</p>
+    <form id="signin-form">
+      <label for="email">Email</label>
+      <input id="email" type="email" autocomplete="email" required>
+      <button type="submit">Email me a sign-in link</button>
+    </form>
+    <div class="msg" id="signin-msg" role="status"></div>
+  </section>
+
+  <!-- Step 2: find your license -->
+  <section id="claim" class="card" hidden>
+    <h2 style="margin-top:0">Find your license</h2>
+    <p class="fine" style="margin-top:0">We check these against the public TLC active drivers list.</p>
+    <form id="claim-form">
+      <label for="license">FHV license number</label>
+      <input id="license" inputmode="numeric" pattern="[0-9]{4,9}" autocomplete="off" required>
+      <label for="name">Full name</label>
+      <input id="name" autocomplete="name" placeholder="First Last" required>
+      <button type="submit">Find my license</button>
+    </form>
+    <div class="msg" id="claim-msg" role="status"></div>
+  </section>
+
+  <!-- Step 3: dashboard -->
+  <section id="dash" hidden>
+    <div class="card">
+      <h2 style="margin-top:0">Your license</h2>
+      <dl id="facts"></dl>
+    </div>
+    <div class="card">
+      <h2 style="margin-top:0">Telegram alerts</h2>
+      <div id="tg-off">
+        <p style="margin-top:0">Connect Telegram to receive alerts. Tap the button, then press <b>Start</b> in the chat.</p>
+        <a id="tg-link" class="btn" target="_blank" rel="noopener">Connect Telegram</a>
+        <button id="tg-refresh" class="quiet" type="button">I pressed Start, refresh</button>
+      </div>
+      <div id="tg-on" hidden>
+        <p style="margin-top:0"><span class="pill ok">Connected</span></p>
+        <p class="fine" style="margin-bottom:0">Send /stop to the bot at any time to turn alerts off.</p>
+      </div>
+      <ul class="tight fine">
+        <li>One alert 30 days before your license expires.</li>
+        <li>One alert if your license no longer appears on the TLC active list (this can be a suspension, an unrenewed license, or another change).</li>
+        <li>One alert if it comes back.</li>
+      </ul>
+    </div>
+    <div class="card">
+      <button id="delete" class="quiet" type="button" style="margin-top:0">Delete my data and stop alerts</button>
+      <button id="signout" class="quiet" type="button">Sign out</button>
+      <div class="msg" id="dash-msg" role="status"></div>
+    </div>
+  </section>
+
+  <p class="fine">Unofficial service. Not affiliated with or endorsed by the NYC Taxi &amp; Limousine Commission.
+    Alerts use the public TLC dataset, which can lag or contain errors, so always confirm your status with the TLC at nyc.gov/tlc.
+    We store only your email, license number, name as listed, expiration date and Telegram chat ID, and delete them when you ask.</p>
+</main>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>
+(async () => {
+  const $ = (id) => document.getElementById(id);
+  const show = (id) => {
+    for (const s of ['loading', 'signin', 'claim', 'dash']) $(s).hidden = s !== id;
+  };
+  const say = (id, text, kind) => { const el = $(id); el.textContent = text || ''; el.className = 'msg ' + (kind || ''); };
+
+  let supa;
+  try {
+    const cfg = await (await fetch('/api/config')).json();
+    if (!cfg.supabaseUrl) throw new Error('config');
+    supa = window.supabase.createClient(cfg.supabaseUrl, cfg.supabaseAnonKey);
+  } catch {
+    $('loading').textContent = 'This site is not configured yet.';
+    return;
+  }
+
+  async function api(path, opts = {}) {
+    const { data } = await supa.auth.getSession();
+    const token = data.session?.access_token;
+    const res = await fetch(path, {
+      ...opts,
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+    });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) throw Object.assign(new Error(body.error || 'Request failed'), { status: res.status });
+    return body;
+  }
+
+  function renderDash(link) {
+    const rows = [
+      ['License', link.license_number],
+      ['Name', link.driver_name],
+      ['Type', link.license_type || '—'],
+      ['Expires', link.expiration_date || '—'],
+      ['WAV trained', link.wheelchair_trained || 'No'],
+    ];
+    const facts = $('facts');
+    facts.replaceChildren();
+    for (const [k, v] of rows) {
+      const dt = document.createElement('dt'); dt.textContent = k;
+      const dd = document.createElement('dd'); dd.textContent = v;
+      facts.append(dt, dd);
+    }
+    const dt = document.createElement('dt'); dt.textContent = 'Status';
+    const dd = document.createElement('dd');
+    const pill = document.createElement('span');
+    pill.className = 'pill ' + (link.status === 'active' ? 'ok' : 'bad');
+    pill.textContent = link.status_text;
+    dd.append(pill); facts.append(dt, dd);
+
+    $('tg-off').hidden = link.telegram_linked;
+    $('tg-on').hidden = !link.telegram_linked;
+    if (link.telegram_link) $('tg-link').href = link.telegram_link;
+    show('dash');
+  }
+
+  async function route() {
+    const { data } = await supa.auth.getSession();
+    if (!data.session) return show('signin');
+    try {
+      const me = await api('/api/me');
+      me.link ? renderDash(me.link) : show('claim');
+    } catch (e) {
+      if (e.status === 401) { await supa.auth.signOut(); return show('signin'); }
+      $('loading').textContent = e.message; show('loading');
+    }
+  }
+
+  $('signin-form').addEventListener('submit', async (ev) => {
+    ev.preventDefault();
+    say('signin-msg', 'Sending…');
+    const { error } = await supa.auth.signInWithOtp({
+      email: $('email').value.trim(),
+      options: { emailRedirectTo: window.location.origin },
+    });
+    error ? say('signin-msg', error.message, 'err')
+          : say('signin-msg', 'Check your email for the sign-in link.', 'ok');
+  });
+
+  $('claim-form').addEventListener('submit', async (ev) => {
+    ev.preventDefault();
+    const btn = ev.submitter; btn.disabled = true; say('claim-msg', 'Checking…');
+    try {
+      const link = await api('/api/claim', {
+        method: 'POST',
+        body: JSON.stringify({ license_number: $('license').value.trim(), name: $('name').value.trim() }),
+      });
+      say('claim-msg', ''); renderDash(link);
+    } catch (e) { say('claim-msg', e.message, 'err'); }
+    btn.disabled = false;
+  });
+
+  $('tg-refresh').addEventListener('click', route);
+
+  $('delete').addEventListener('click', async () => {
+    if (!confirm('Delete your stored data and stop all alerts?')) return;
+    try { await api('/api/me', { method: 'DELETE' }); say('dash-msg', ''); show('claim'); }
+    catch (e) { say('dash-msg', e.message, 'err'); }
+  });
+
+  $('signout').addEventListener('click', async () => { await supa.auth.signOut(); show('signin'); });
+
+  supa.auth.onAuthStateChange((event) => { if (event === 'SIGNED_IN') route(); });
+  route();
+})();
+</script>
+</body>
+</html>
